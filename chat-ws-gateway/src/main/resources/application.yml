@@ -1,0 +1,21 @@
+server:
+    port: 8080
+
+spring:
+    application:
+        name: chat-ws-gateway
+    data:
+        redis:
+            host: localhost
+            port: 6379
+
+jwt:
+    secret: "your-very-long-secret-key-at-least-32-chars-here"
+
+internal:
+    chat-api:
+        url: http://localhost:8081
+
+logging:
+    level:
+        com.app.chat_ws_gateway: DEBUG
