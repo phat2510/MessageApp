@@ -6,6 +6,7 @@ import lombok.Data;
 public class WsMessagePayload {
     private String clientMessageId;
     private String receiverId;
+    private String conversationId; // thêm mới
     private String content;
     private String type;
 }

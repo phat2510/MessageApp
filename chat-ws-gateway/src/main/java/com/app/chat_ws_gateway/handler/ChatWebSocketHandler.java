@@ -2,13 +2,13 @@ package com.app.chat_ws_gateway.handler;
 
 import com.app.chat_ws_gateway.dto.WsMessagePayload;
 import com.app.chat_ws_gateway.filter.WsPayloadFilter;
+import com.app.common_shared.dto.ChatMessageEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
@@ -21,16 +21,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private final WsPayloadFilter payloadFilter;
-    private final RestTemplate restTemplate;
+    private final KafkaTemplate<String, ChatMessageEvent> kafkaTemplate;
     private final ObjectMapper objectMapper;
 
-    @Value("${internal.chat-api.url}")
-    private String chatApiUrl;
-
-    // Lưu các session đang active: userId -> session
+    private static final String CHAT_TOPIC = "chat-topic";
     private final Map<String, WebSocketSession> activeSessions = new ConcurrentHashMap<>();
-
-    // ---- Lifecycle ----
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -47,13 +42,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         log.info("[WS] Disconnected — userId={}", userId);
     }
 
-    // ---- Xử lý message ----
-
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
         String userId = (String) session.getAttributes().get("userId");
 
-        // Filter 2: validate payload
         WsMessagePayload payload;
         try {
             payload = payloadFilter.validateAndParse(message.getPayload(), userId);
@@ -63,35 +55,25 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // Gọi chat-api nội bộ
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("X-User-Id", userId);
-            headers.set("X-Internal-Request", "true");
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            ChatMessageEvent event = ChatMessageEvent.builder()
+                    .clientMessageId(payload.getClientMessageId())
+                    .senderId(userId)
+                    .senderName(userId)
+                    .receiverId(payload.getReceiverId())
+                    .conversationId(payload.getConversationId())
+                    .content(payload.getContent())
+                    .type(payload.getType())
+                    .timestamp(System.currentTimeMillis())
+                    .build();
 
-            Map<String, String> requestBody = Map.of(
-                    "clientMessageId", payload.getClientMessageId(),
-                    "receiverId", payload.getReceiverId(),
-                    "content", payload.getContent(),
-                    "senderName", userId,
-                    "type", payload.getType()
-            );
-
-            HttpEntity<Map<String, String>> entity = new HttpEntity<>(requestBody, headers);
-            ResponseEntity<Map> response = restTemplate.postForEntity(
-                    chatApiUrl + "/api/v1/chat/send", entity, Map.class);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("[WS] Forwarded — userId={}, clientMessageId={}",
-                        userId, payload.getClientMessageId());
-                sendAck(session, "SENT", payload.getClientMessageId(), "Tin nhắn đang được xử lý");
-            } else {
-                sendAck(session, "ERROR", payload.getClientMessageId(), "Lỗi khi gửi tin nhắn");
-            }
+            kafkaTemplate.send(CHAT_TOPIC, event.getReceiverId(), event);
+            log.info("[WS] Published Kafka — userId={}, clientMessageId={}",
+                    userId, payload.getClientMessageId());
+            sendAck(session, "SENT", payload.getClientMessageId(), "Tin nhắn đang được xử lý");
 
         } catch (Exception e) {
-            log.error("[WS] Lỗi gọi chat-api — userId={}: {}", userId, e.getMessage());
+            log.error("[WS] Lỗi publish Kafka — userId={}: {}", userId, e.getMessage());
             sendAck(session, "ERROR", payload.getClientMessageId(), "Lỗi hệ thống");
         }
     }
@@ -102,7 +84,20 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         log.error("[WS] Transport error — userId={}: {}", userId, exception.getMessage());
     }
 
-    // ---- Helper ----
+    public boolean pushToUser(String userId, String jsonPayload) {
+        WebSocketSession session = activeSessions.get(userId);
+        if (session != null && session.isOpen()) {
+            try {
+                session.sendMessage(new TextMessage(jsonPayload));
+                log.info("[WS] Pushed — userId={}", userId);
+                return true;
+            } catch (Exception e) {
+                log.error("[WS] Lỗi push userId={}: {}", userId, e.getMessage());
+            }
+        }
+        log.info("[WS] userId={} offline", userId);
+        return false;
+    }
 
     private void sendAck(WebSocketSession session, String status,
                          String clientMessageId, String message) {

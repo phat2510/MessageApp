@@ -16,7 +16,8 @@ public class ChatMessageEvent implements Serializable {
     private String senderName;
     private String senderId;
     private String receiverId;
+    private String conversationId; // thêm mới
     private String content;
     private long timestamp;
-    private String type; // TEXT, IMAGE, v.v.
+    private String type;
 }
