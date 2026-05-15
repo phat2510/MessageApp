@@ -27,9 +27,20 @@ services:
     container_name: redis-chat
     ports:
       - "6379:6379"
-      - "6379:6379"
-      - "6379:6379"
+
+
+  postgres:
+    image: postgres:15
+    container_name: postgres-chat
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: message_app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/db.sql:/docker-entrypoint-initdb.d/db.sql
 
 volumes:
-  - postgres_data:/var/lib/postgresql/data
-  - ./scripts/db.sql:/docker-entrypoint-initdb.d/db.sql
+    postgres_data:

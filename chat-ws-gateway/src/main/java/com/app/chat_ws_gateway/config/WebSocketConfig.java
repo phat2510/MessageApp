@@ -15,10 +15,12 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     private final ChatWebSocketHandler chatWebSocketHandler;
     private final WsHandshakeAuthInterceptor handshakeAuthInterceptor;
+    private final ChatWebSocketHandler notiWebSocketHandler;
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(chatWebSocketHandler, "/ws/chat")
+                .addHandler(notiWebSocketHandler, "/ws/noti/*")
                 .addInterceptors(handshakeAuthInterceptor)
                 .setAllowedOriginPatterns("*");
     }

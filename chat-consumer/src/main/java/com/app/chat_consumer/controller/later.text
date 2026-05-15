@@ -1,0 +1,146 @@
+package com.app.chat_consumer.controller;
+
+import com.app.chat_consumer.dto.*;
+import com.app.chat_consumer.entity.*;
+import com.app.chat_consumer.repository.*;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@RestController
+@RequestMapping("/api/conversations")
+@RequiredArgsConstructor
+@Slf4j
+public class ConversationController {
+
+    private final ConversationRepository conversationRepository;
+    private final ConversationMemberRepository conversationMemberRepository;
+    private final MessageRepository messageRepository;
+
+    /**
+     * Tạo conversation mới
+     * POST /api/conversations
+     * Body: { "type": "GROUP", "memberIds": ["uuid1", "uuid2"] }
+     */
+    @PostMapping
+    public ResponseEntity<ConversationResponse> createConversation(@RequestBody CreateConversationRequest req) {
+        if (req.getMemberIds() == null || req.getMemberIds().size() < 2)
+            return ResponseEntity.badRequest().build();
+
+        String type = req.getType() != null ? req.getType().toUpperCase() : "PRIVATE";
+        if (!type.matches("^(PRIVATE|GROUP)$"))
+            return ResponseEntity.badRequest().build();
+
+        Conversation conversation = Conversation.builder()
+                .type(type)
+                .createdAt(LocalDateTime.now())
+                .build();
+        conversationRepository.save(conversation);
+
+        List<ConversationMember> members = req.getMemberIds().stream()
+                .map(uid -> ConversationMember.builder()
+                        .id(new ConversationMemberId(conversation.getConversationId(), UUID.fromString(uid)))
+                        .joinedAt(LocalDateTime.now())
+                        .build())
+                .collect(Collectors.toList());
+        conversationMemberRepository.saveAll(members);
+
+        log.info("[API] Tạo conversation {} ({}), {} members",
+                conversation.getConversationId(), type, members.size());
+
+        return ResponseEntity.ok(ConversationResponse.builder()
+                .conversationId(conversation.getConversationId().toString())
+                .type(conversation.getType())
+                .createdAt(conversation.getCreatedAt())
+                .memberIds(req.getMemberIds())
+                .build());
+    }
+
+    /**
+     * Add thêm member vào conversation (chỉ GROUP)
+     * POST /api/conversations/{conversationId}/members
+     * Body: { "userId": "uuid-of-user-c" }
+     */
+    @PostMapping("/{conversationId}/members")
+    public ResponseEntity<?> addMember(@PathVariable UUID conversationId,
+                                       @RequestBody Map<String, String> body) {
+
+        String userIdStr = body.get("userId");
+        if (userIdStr == null)
+            return ResponseEntity.badRequest().body("Thiếu userId");
+
+        UUID userId;
+        try {
+            userId = UUID.fromString(userIdStr);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body("userId không hợp lệ");
+        }
+
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElse(null);
+        if (conversation == null)
+            return ResponseEntity.notFound().build();
+
+        if ("PRIVATE".equals(conversation.getType()))
+            return ResponseEntity.badRequest().body("Không thể thêm member vào conversation PRIVATE");
+
+        if (conversationMemberRepository.existsById_ConversationIdAndId_UserId(conversationId, userId))
+            return ResponseEntity.badRequest().body("User đã là member của conversation này");
+
+        ConversationMember member = ConversationMember.builder()
+                .id(new ConversationMemberId(conversationId, userId))
+                .joinedAt(LocalDateTime.now())
+                .build();
+        conversationMemberRepository.save(member);
+
+        log.info("[API] Thêm user {} vào conversation {}", userId, conversationId);
+
+        return ResponseEntity.ok(Map.of(
+                "conversationId", conversationId.toString(),
+                "userId", userIdStr,
+                "joinedAt", member.getJoinedAt().toString()
+        ));
+    }
+
+    /**
+     * Lấy lịch sử tin nhắn
+     * GET /api/conversations/{conversationId}/messages?userId=xxx&limit=50
+     */
+    @GetMapping("/{conversationId}/messages")
+    public ResponseEntity<?> getMessages(@PathVariable UUID conversationId,
+                                         @RequestParam String userId,
+                                         @RequestParam(defaultValue = "50") int limit) {
+        UUID userUUID;
+        try {
+            userUUID = UUID.fromString(userId);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body("userId không hợp lệ");
+        }
+
+        // Kiểm tra user có trong conversation không
+        if (!conversationMemberRepository.existsById_ConversationIdAndId_UserId(conversationId, userUUID))
+            return ResponseEntity.status(403).body("User không thuộc conversation này");
+
+        List<MessageResponse> result = messageRepository
+                .findByConversationIdOrderByCreatedAtDesc(conversationId)
+                .stream()
+                .limit(limit)
+                .sorted(Comparator.comparing(Message::getCreatedAt)) // đảo lại cũ → mới
+                .map(m -> MessageResponse.builder()
+                        .messageId(m.getMessageId().toString())
+                        .conversationId(m.getConversationId().toString())
+                        .senderId(m.getSenderId().toString())
+                        .content(m.getContent())
+                        .type(m.getType())
+                        .createdAt(m.getCreatedAt())
+                        .build())
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(result);
+    }
+}

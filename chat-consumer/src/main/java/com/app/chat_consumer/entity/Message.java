@@ -5,13 +5,12 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.apache.kafka.common.protocol.types.Field;
-import org.springframework.data.annotation.Id;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
-@Table(name = "Messages")
+@Table(name = "messages")
 @Data
 @Builder
 @NoArgsConstructor
@@ -21,13 +20,13 @@ public class Message {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "message_id")
-    private Field.UUID messageId;
+    private UUID messageId;
 
     @Column(name = "conversation_id", nullable = false)
-    private Field.UUID conversationId;
+    private UUID conversationId;
 
     @Column(name = "sender_id", nullable = false)
-    private Field.UUID senderId;
+    private UUID senderId;
 
     @Column(name = "content", nullable = false)
     private String content;

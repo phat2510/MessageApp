@@ -60,14 +60,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     .clientMessageId(payload.getClientMessageId())
                     .senderId(userId)
                     .senderName(userId)
-                    .receiverId(payload.getReceiverId())
                     .conversationId(payload.getConversationId())
                     .content(payload.getContent())
                     .type(payload.getType())
                     .timestamp(System.currentTimeMillis())
                     .build();
 
-            kafkaTemplate.send(CHAT_TOPIC, event.getReceiverId(), event);
+            kafkaTemplate.send(CHAT_TOPIC, event.getConversationId(), event);
             log.info("[WS] Published Kafka — userId={}, clientMessageId={}",
                     userId, payload.getClientMessageId());
             sendAck(session, "SENT", payload.getClientMessageId(), "Tin nhắn đang được xử lý");

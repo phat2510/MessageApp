@@ -31,16 +31,14 @@ public class WsPayloadFilter {
         }
 
         // Validate field bắt buộc
-        if (isBlank(payload.getReceiverId()))
-            throw new PayloadFilterException("Thiếu receiverId");
+        if (isBlank(payload.getConversationId()))
+            throw new PayloadFilterException("Thiếu ConversationId");
         if (isBlank(payload.getContent()))
             throw new PayloadFilterException("Thiếu content");
         if (isBlank(payload.getClientMessageId()))
             throw new PayloadFilterException("Thiếu clientMessageId");
 
-        // Sender != receiver
-        if (senderId.equals(payload.getReceiverId()))
-            throw new PayloadFilterException("Không thể gửi tin nhắn cho chính mình");
+
 
         // Validate type
         String type = payload.getType() != null ? payload.getType() : "TEXT";

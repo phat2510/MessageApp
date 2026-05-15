@@ -64,6 +64,8 @@ public class WsHandshakeAuthInterceptor implements HandshakeInterceptor {
     @Override
     public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response,
                                WebSocketHandler wsHandler, Exception exception) {
+
+
     }
 
     private boolean checkRateLimit(String ip) {

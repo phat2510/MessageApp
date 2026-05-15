@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.List;
 
 @Data
 @Builder
@@ -13,10 +14,12 @@ import java.io.Serializable;
 @NoArgsConstructor
 public class ChatMessageEvent implements Serializable {
     private String clientMessageId;
-    private String senderName;
+    private String targetMemberId;
+    private String messageId;
     private String senderId;
-    private String receiverId;
-    private String conversationId; // thêm mới
+    private String senderName;
+    private String conversationId;
+    private List<String> memberIds;
     private String content;
     private long timestamp;
     private String type;
